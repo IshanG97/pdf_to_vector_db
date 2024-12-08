@@ -3,3 +3,4 @@ input_pdfs/
 extra_pdfs/
 qdrant_storage/
 output_images/
+colpali_embeddings_generator.ipynb
