@@ -61,7 +61,7 @@ retriever = QdrantColbertRetriever(collection_name=collection_name, qdrant_clien
 
 # Perform Search for Each Query
 for query in query_embeddings:
-    query = query.float().numpy()
+    query = query.float().cpu().numpy()
     results = retriever.search(query, topk=1)
 
     # Display Results
