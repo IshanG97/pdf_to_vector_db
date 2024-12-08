@@ -1,2 +1,5 @@
 .DS_Store
 input_pdfs/
+extra_pdfs/
+qdrant_storage/
+output_images/

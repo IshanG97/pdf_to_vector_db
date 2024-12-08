@@ -1,6 +1,7 @@
 What this does: 
-- Parses PDFs into vector embeddings using PyMuPDF, PyPDF2 and the SentencesTransformers library
-- Load these embeddings into a vector database - QDRANT
+- Parses PDFs into images using Pillow and then uses ColPali to process the images into vector embeddings in json format that will subsequently be loaded into QDRANT - vector database
+- Also has basic QC checks
+>>>>>>> 59fca48 (Testing the waters)
 
 How to create the vector database:
 1. (optional) Create a pipenv shell
