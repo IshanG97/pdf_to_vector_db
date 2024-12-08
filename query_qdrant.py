@@ -10,20 +10,20 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 model.to(device)  # Move model to MPS or CPU based on availability
 
 # Initialize Qdrant client
-client = QdrantClient(path="qdrant_storage")  # Use a persistent storage directory
-collection_name = "pdf_embeddings"
+client = QdrantClient(path="qdrant_storage")  # Use the persistent storage directory
+collection_name = "pdf_embeddings"  # Updated to match the collection name in process_pdfs.py
 
 # Function to Query Qdrant
 def query_qdrant(query_text, limit=5):
     """
-    Query the Qdrant database for similar documents.
-    
+    Query the Qdrant database for similar sentences with metadata.
+
     Args:
         query_text (str): The text query to search for.
         limit (int): The number of top results to retrieve.
 
     Returns:
-        list: Search results with filenames and scores.
+        list: Search results with filenames, page numbers, sentences, and additional metadata.
     """
     # Generate query embedding
     query_embedding = model.encode(query_text, device=device)
@@ -37,7 +37,18 @@ def query_qdrant(query_text, limit=5):
 
     # Format results
     formatted_results = [
-        {"filename": result.payload["filename"], "score": result.score}
+        {
+            "filename": result.payload["filename"],
+            "page_number": result.payload["page_number"],
+            "sentence": result.payload["sentence"],
+            "title": result.payload.get("title", ""),
+            "author": result.payload.get("author", ""),
+            "creation_date": result.payload.get("creation_date", ""),
+            "modification_date": result.payload.get("modification_date", ""),
+            "keywords": result.payload.get("keywords", ""),
+            "dimensions": result.payload.get("dimensions", {}),
+            "score": result.score
+        }
         for result in results
     ]
     return formatted_results
@@ -45,10 +56,21 @@ def query_qdrant(query_text, limit=5):
 
 # Example Query
 if __name__ == "__main__":
-    query_text = "What did Teri say the cash used in the third quarter was?"  # Replace with your query
+    query_text = "What did Teri say the cash used in operations in the third quarter of Q3 was?"  # Replace with your query
     search_results = query_qdrant(query_text)
 
     # Display Search Results
     print("Search Results:")
     for result in search_results:
-        print(f"File: {result['filename']}, Score: {result['score']}")
+        print(
+            f"File: {result['filename']}, "
+            f"Page: {result['page_number']}, "
+            f"Sentence: {result['sentence']}, "
+            f"Title: {result['title']}, "
+            f"Author: {result['author']}, "
+            f"Creation Date: {result['creation_date']}, "
+            f"Modification Date: {result['modification_date']}, "
+            f"Keywords: {result['keywords']}, "
+            f"Dimensions: {result['dimensions']}, "
+            f"Score: {result['score']}"
+        )
