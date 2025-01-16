@@ -1,4 +1,4 @@
-#PDF2VectorDB
+# PDF2VectorDB
 
 -- Built during EF Hackathon London 2024 --
 
