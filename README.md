@@ -1,3 +1,5 @@
+#PDF2VectorDB
+
 -- Built during EF Hackathon London 2024 --
 
 Ingestion engine for rich PDFs. It has two implementations:
