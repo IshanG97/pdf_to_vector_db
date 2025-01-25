@@ -17,8 +17,11 @@ def pdf_to_image(input_folder, output_folder):
                 image_path = os.path.join(output_folder, f"{base_name}_page_{i + 1}.png")
                 image.save(image_path, "PNG")
                 image_paths.append(image_path)
+
+    print(f"PDFs converted into {len(image_paths)} images: {image_paths}")
     return image_paths
 
-# Example usage
-image_paths = pdf_to_image(input_folder="../input_pdfs", output_folder="../output_images")
-print(f"PDFs converted into {len(image_paths)} images: {image_paths}")
+if __name__ == "__main__":
+    # Example usage
+    image_paths = pdf_to_image(input_folder="../input_pdfs", output_folder="../output_images")
+    

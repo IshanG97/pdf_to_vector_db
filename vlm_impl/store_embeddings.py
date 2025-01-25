@@ -1,108 +1,121 @@
 import os
 import torch
-import time
-import numpy as np
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
-from tqdm import tqdm
 from PIL import Image
 from uuid import uuid4
+from tqdm import tqdm
 import stamina
+import requests
 from colpali_engine.models import ColPali, ColPaliProcessor
 
-# Initialize Qdrant
-client = QdrantClient(path="../qdrant_storage")
-collection_name = "colpali_embeddings"
-dim = 128  # Dimensionality of ColPali embeddings
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent.parent))
+from utils.config import config
 
-# Initialize ColPali Model and Processor
-model_name = "vidore/colpali-v1.2"
-model = ColPali.from_pretrained(
-    model_name,
-    torch_dtype=torch.bfloat16,
-    device_map="mps", #cuda:0 if you have an Nvidia GPU
-).eval()
+QDRANT_API_URL = f"{config["QDRANT_HOST"]}:{config["QDRANT_PORT"]}"
 
-processor = ColPaliProcessor.from_pretrained(model_name)
+def init_colpali(model_name="vidore/colpali-v1.2", device="mps"):
+    """Initialize ColPali model and processor."""
+    model = ColPali.from_pretrained(
+        model_name,
+        torch_dtype=torch.bfloat16,
+        device_map=device
+    ).eval()
+    processor = ColPaliProcessor.from_pretrained(model_name)
+    return model, processor
 
-client.create_collection(
-    collection_name=collection_name,
-    on_disk_payload=True,  # store the payload on disk
-    vectors_config=models.VectorParams(
-        size=128,
-        distance=models.Distance.COSINE,
-        on_disk=True, # move original vectors to disk
-        multivector_config=models.MultiVectorConfig(
-            comparator=models.MultiVectorComparator.MAX_SIM
-        ),
-        quantization_config=models.BinaryQuantization(
-        binary=models.BinaryQuantizationConfig(
-            always_ram=True  # keep only quantized vectors in RAM
-            ),
-        ),
-    ),
-)
+def init_collection(collection_name="colpali_embeddings"):
+    """Initialize Qdrant collection through API."""
+    custom_config = {
+        "on_disk_payload": True,
+        "vectors_config": {
+            "on_disk": True,
+            "multivector_config": {
+                "comparator": "MAX_SIM"
+            },
+            "quantization_config": {
+                "binary": {
+                    "always_ram": True
+                }
+            }
+        }
+    }
+    
+    response = requests.post(
+        f"{QDRANT_API_URL}/collection/{collection_name}",
+        json={
+            "vector_size": 128,
+            "distance": "Cosine",
+            "recreate": True,
+            "custom_config": custom_config
+        }
+    )
+    response.raise_for_status()
 
-@stamina.retry(on=Exception, attempts=3) # retry mechanism if an exception occurs during the operation
-def upsert_to_qdrant(batch):
-    try:
-        client.upsert(
-            collection_name=collection_name,
-            points=points,
-            wait=False,
-        )
-    except Exception as e:
-        print(f"Error during upsert: {e}")
-        return False
-    return True
+def load_images(image_dir):
+    """Load all images from directory."""
+    image_files = os.listdir(image_dir)
+    return [
+        {"image": Image.open(os.path.join(image_dir, name)), "filename": name} 
+        for name in image_files
+    ]
 
-# Prepare Documents (Images of Pages)
-image_dir = "../output_images"
-image_files = os.listdir(image_dir)
-images = [{"image": Image.open(os.path.join(image_dir, name)), "filename": name} for name in image_files]
-
-batch_size = 4  # Adjust based on your GPU memory constraints
-
-# Use tqdm to create a progress bar
-with tqdm(total=len(images), desc="Indexing Progress") as pbar:
-    for i in range(0, len(images), batch_size):
-        batch = images[i: i + batch_size]
-        batch_images = [item["image"] for item in batch]
-        batch_filenames = [item["filename"] for item in batch]
-
-        # Process and encode images
-        with torch.no_grad():
-            processed_images = processor.process_images(batch_images).to(model.device)
-            image_embeddings = model(**processed_images)
-
-        # Prepare points for Qdrant
-        points = []
-        for j, (embedding, filename) in enumerate(zip(image_embeddings, batch_filenames)):
-            # Convert the embedding to a list of vectors
+@stamina.retry(on=Exception, attempts=3)
+def process_batch(batch_images, batch_filenames, model, processor, image_dir):
+    """Process a batch of images and create points for Qdrant."""
+    points = []
+    with torch.no_grad():
+        processed_images = processor.process_images(batch_images).to(model.device)
+        image_embeddings = model(**processed_images)
+        
+        for embedding, filename in zip(image_embeddings, batch_filenames):
             multivector = embedding.cpu().float().numpy().tolist()
-            points.append(
-                models.PointStruct(
-                    id=str(uuid4()),
-                    vector=multivector,  # List of vectors
-                    payload={
-                        "filepath": os.path.join(image_dir, filename),
-                    },  # Metadata
-                )
-            )
+            points.append({
+                'id': str(uuid4()),
+                'vector': multivector,
+                'payload': {
+                    'filepath': os.path.join(image_dir, filename),
+                }
+            })
+    return points
 
-        # Upload points to Qdrant
-        try:
-            upsert_to_qdrant(points)
-        except Exception as e:
-            print(f"Error during upsert: {e}")
-            continue
+def upload_points(points, collection_name):
+    """Upload points through API."""
+    response = requests.post(
+        f"{QDRANT_API_URL}/points/{collection_name}",
+        json=points
+    )
+    response.raise_for_status()
 
-        # Update the progress bar
-        pbar.update(batch_size)
+def process_images(images, image_dir, model, processor, collection_name, batch_size=4):
+    """Process all images in batches and index them through API."""
+    with tqdm(total=len(images), desc="Indexing Progress") as pbar:
+        for i in range(0, len(images), batch_size):
+            batch = images[i:i + batch_size]
+            batch_images = [item["image"] for item in batch]
+            batch_filenames = [item["filename"] for item in batch]
+            
+            try:
+                points = process_batch(batch_images, batch_filenames, model, processor, image_dir)
+                upload_points(points, collection_name)
+            except Exception as e:
+                print(f"Error processing batch: {e}")
+                continue
+                
+            pbar.update(len(batch))
 
-print("Indexing complete!")
-
-client.update_collection(
-    collection_name=collection_name,
-    optimizer_config=models.OptimizersConfigDiff(indexing_threshold=10),
-)
+if __name__ == "__main__":
+        # Initialize model
+    model, processor = init_colpali()
+    collection_name = "colpali_embeddings"
+    
+    # Initialize collection
+    init_collection(collection_name)
+    
+    # Load and process images
+    image_dir = "../output_images"
+    images = load_images(image_dir)
+    
+    # Process images
+    process_images(images, image_dir, model, processor, collection_name)
+    print("Indexing complete!")

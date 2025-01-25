@@ -1,4 +1,6 @@
 .DS_Store
+.env*
 input_pdfs/
-qdrant_storage/
+qdrant/data/
 output_images/
+utils/__pycache__/
