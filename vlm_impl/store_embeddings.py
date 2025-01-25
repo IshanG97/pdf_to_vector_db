@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 from utils.config import config
 
-QDRANT_API_URL = f"{config["QDRANT_HOST"]}:{config["QDRANT_PORT"]}"
+QDRANT_API_URL = f"{config['QDRANT_HOST']}:{config['QDRANT_PORT']}"
 
 def init_colpali(model_name="vidore/colpali-v1.2", device="mps"):
     """Initialize ColPali model and processor."""
