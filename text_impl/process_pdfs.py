@@ -11,7 +11,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utils.extract_metadata import extract_metadata
 from utils.config import config
 
-QDRANT_API_URL = f"http://{config["QDRANT_HOST"]}:{config["QDRANT_PORT"]}"
+QDRANT_API_URL = f"http://{config['QDRANT_HOST']}:{config['QDRANT_PORT']}"
 
 def init_model():
     """Initialize the sentence transformer model."""
